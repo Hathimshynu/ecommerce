@@ -5476,3 +5476,11 @@
 #57 D:/Projects/ecommerce/public/index.php(23): Illuminate/Foundation/Http/Kernel->handle(Object(Illuminate/Http/Request))
 #58 {main}
 "} 
+[2026-04-05 10:55:58] local.ERROR: Command "tinker" is not defined. {"exception":"[object] (Symfony\\Component\\Console\\Exception\\CommandNotFoundException(code: 0): Command \"tinker\" is not defined. at D:/Projects/ecommerce/vendor/symfony/console/Application.php:759)
+[stacktrace]
+#0 D:/Projects/ecommerce/vendor/symfony/console/Application.php(298): Symfony/Component/Console/Application->find('tinker')
+#1 D:/Projects/ecommerce/vendor/symfony/console/Application.php(195): Symfony/Component/Console/Application->doRun(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#2 D:/Projects/ecommerce/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony/Component/Console/Application->run(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#3 D:/Projects/ecommerce/artisan(10): Illuminate/Foundation/Console/Kernel->handle(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#4 {main}
+"} 
