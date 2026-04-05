@@ -23,6 +23,18 @@ class User extends Model
         'state',
         'zip_code',
         'country',
+        'google_id',
+        'github_id',
+        'google_token',
+        'github_token',
+        'google_refresh_token',
+        'github_refresh_token',
+        'email_verified_at',
+    ];
+
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'password' => 'hashed',
     ];
 
     public function orders()
