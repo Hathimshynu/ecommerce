@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { banners } from "@/db/schema";
 import { Badge, PageHeader, Panel } from "@/components/admin/ui";
 import { ActionForm } from "@/components/admin/action-form";
+import { ImageField } from "@/components/admin/image-upload";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { deleteBannerAction, saveBannerAction, toggleBannerAction } from "@/app/admin/actions";
 
@@ -20,7 +21,7 @@ export default async function AdminBanners() {
           <div className="mb-3 grid gap-3 sm:grid-cols-2">
             <div><label className="label">Title *</label><input name="title" required className="input" /></div>
             <div><label className="label">Subtitle</label><input name="subtitle" className="input" /></div>
-            <div><label className="label">Image URL * (1600×400 recommended)</label><input name="image" type="url" required className="input" /></div>
+            <div><label className="label">Image URL * (1600×400 recommended)</label><ImageField name="image" required /></div>
             <div><label className="label">Link *</label><input name="link" required defaultValue="/" className="input" /></div>
             <div><label className="label">Sort order</label><input name="sortOrder" type="number" defaultValue={rows.length} className="input" /></div>
           </div>

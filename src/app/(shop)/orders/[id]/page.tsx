@@ -8,16 +8,18 @@ import { orderItems, orders } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { cancelOrderAction } from "@/app/actions/shop";
 import { ClearCart } from "@/components/shop/clear-cart";
+import { RetryPaymentButton } from "@/components/shop/pay-button";
+import { razorpayConfig } from "@/lib/payments";
 import { formatDate, formatPrice } from "@/lib/format";
 import { ORDER_STEPS, STATUS_LABEL } from "@/lib/orders";
 
 export const metadata: Metadata = { title: "Order Details", robots: { index: false } };
 
-type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ placed?: string }> };
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ placed?: string; payment?: string }> };
 
 export default async function OrderPage({ params, searchParams }: Props) {
   const { id } = await params;
-  const { placed } = await searchParams;
+  const { placed, payment } = await searchParams;
   const user = await requireUser(`/orders/${id}`);
   const orderId = Number(id);
   if (!Number.isInteger(orderId)) notFound();
@@ -26,12 +28,26 @@ export default async function OrderPage({ params, searchParams }: Props) {
   const items = await db.select().from(orderItems).where(eq(orderItems.orderId, order.id));
   const stepIndex = ORDER_STEPS.indexOf(order.status);
   const a = order.shippingAddress;
+  const awaitingPayment = order.status === "pending" && order.paymentMethod !== "cod";
 
   return (
     <div className="mx-auto max-w-5xl space-y-3 p-2 sm:p-3">
-      {placed && (
+      {(placed || payment) && <ClearCart />}
+      {awaitingPayment && (
+        <div className="card flex flex-wrap items-center justify-between gap-4 border-l-4 border-amber-500 p-5">
+          <div>
+            <p className="text-lg font-semibold">
+              {order.paymentStatus === "failed" ? "Payment failed" : "Payment pending"} for order #{order.id}
+            </p>
+            <p className="text-sm text-gray-600">
+              Items are reserved for 30 minutes. Complete the payment to confirm your order, or cancel it below.
+            </p>
+          </div>
+          {razorpayConfig() && <RetryPaymentButton orderId={order.id} />}
+        </div>
+      )}
+      {placed && !awaitingPayment && (
         <>
-          <ClearCart />
           <div className="card flex items-center gap-4 border-l-4 border-success p-5">
             <span className="flex h-10 w-10 items-center justify-center rounded-full bg-success text-xl text-white">✓</span>
             <div>

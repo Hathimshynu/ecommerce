@@ -6,6 +6,7 @@ import { useActionState, useMemo, useState } from "react";
 import { saveProductAction, type AdminState } from "@/app/admin/actions";
 import type { Category, Product } from "@/db/schema";
 import { discountPercent, slugify } from "@/lib/format";
+import { UploadButton } from "./image-upload";
 
 export function ProductForm({ product, categories }: { product?: Product; categories: Category[] }) {
   const [state, action, pending] = useActionState<AdminState, FormData>(
@@ -18,7 +19,7 @@ export function ProductForm({ product, categories }: { product?: Product; catego
   const [price, setPrice] = useState(product?.price ?? 0);
   const [mrp, setMrp] = useState(product?.mrp ?? 0);
   const [images, setImages] = useState(product?.images.join("\n") ?? "");
-  const previews = useMemo(() => images.split("\n").map((s) => s.trim()).filter((s) => /^https?:\/\//.test(s)).slice(0, 6), [images]);
+  const previews = useMemo(() => images.split("\n").map((s) => s.trim()).filter((s) => /^(https?:\/\/|\/uploads\/)/.test(s)).slice(0, 6), [images]);
 
   return (
     <form action={action} className="grid gap-4 lg:grid-cols-3">
@@ -79,7 +80,10 @@ export function ProductForm({ product, categories }: { product?: Product; catego
           </div>
         </div>
         <div>
-          <label className="label" htmlFor="images">Image URLs (one per line, first is the main image)</label>
+          <div className="mb-1 flex items-center justify-between">
+            <label className="label mb-0" htmlFor="images">Images (one URL per line, first is the main image)</label>
+            <UploadButton onUploaded={(urls) => setImages((cur) => [cur.trim(), ...urls].filter(Boolean).join("\n"))} />
+          </div>
           <textarea id="images" name="images" rows={4} value={images} onChange={(e) => setImages(e.target.value)} className="input font-mono text-xs" placeholder="https://images.unsplash.com/..." />
           {previews.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">

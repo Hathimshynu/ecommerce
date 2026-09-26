@@ -11,6 +11,9 @@ import { invalidateCatalog } from "@/lib/catalog";
 import { flushAppCache } from "@/lib/redis";
 import { reindexAllProducts, removeProductFromSearch, syncCategoryProducts, syncProductToSearch } from "@/lib/indexing";
 import { slugify } from "@/lib/format";
+import { isImageRef } from "@/lib/uploads";
+
+const imageRef = z.string().trim().refine(isImageRef, "Images must be http(s) URLs or uploaded files");
 
 export type AdminState = { error?: string; message?: string } | undefined;
 
@@ -32,7 +35,7 @@ const productSchema = z
     description: z.string().trim().max(10_000).default(""),
     isFeatured: z.boolean(),
     isActive: z.boolean(),
-    images: z.array(z.url("Each image must be a valid URL")).max(10),
+    images: z.array(imageRef).max(10),
     highlights: z.array(z.string().max(200)).max(12),
     specs: z.record(z.string(), z.string()),
   })
@@ -130,7 +133,7 @@ const categorySchema = z.object({
   name: z.string().trim().min(2).max(120),
   slug: z.string().trim().max(140).optional(),
   description: z.string().trim().max(1000).optional(),
-  image: z.url().optional().or(z.literal("")),
+  image: imageRef.optional().or(z.literal("")),
   sortOrder: z.coerce.number().int().default(0),
 });
 
@@ -202,7 +205,7 @@ export async function updateOrderStatusAction(id: number, fd: FormData) {
 const bannerSchema = z.object({
   title: z.string().trim().min(2).max(160),
   subtitle: z.string().trim().max(255).optional(),
-  image: z.url(),
+  image: imageRef,
   link: z.string().trim().startsWith("/", "Link must be a site path like /c/mobiles"),
   sortOrder: z.coerce.number().int().default(0),
 });

@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { categories, products } from "@/db/schema";
 import { PageHeader, Panel } from "@/components/admin/ui";
 import { ActionForm } from "@/components/admin/action-form";
+import { ImageField } from "@/components/admin/image-upload";
 import { deleteCategoryAction, saveCategoryAction } from "@/app/admin/actions";
 
 export const metadata = { title: "Categories" };
@@ -13,7 +14,7 @@ function Fields({ c }: { c?: typeof categories.$inferSelect }) {
       {c && <input type="hidden" name="id" value={c.id} />}
       <div><label className="label">Name *</label><input name="name" required defaultValue={c?.name} className="input" /></div>
       <div><label className="label">Slug</label><input name="slug" defaultValue={c?.slug} placeholder="auto from name" className="input" /></div>
-      <div><label className="label">Image URL</label><input name="image" type="url" defaultValue={c?.image ?? ""} className="input" /></div>
+      <div><label className="label">Image URL</label><ImageField name="image" defaultValue={c?.image ?? ""} /></div>
       <div><label className="label">Sort order</label><input name="sortOrder" type="number" defaultValue={c?.sortOrder ?? 0} className="input" /></div>
       <div className="sm:col-span-2"><label className="label">Description (used for SEO)</label><input name="description" defaultValue={c?.description ?? ""} className="input" /></div>
     </div>

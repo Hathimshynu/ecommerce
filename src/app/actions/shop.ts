@@ -5,9 +5,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db";
-import { orderItems, orders, products, reviews, wishlist } from "@/db/schema";
+import { orderItems, orders, products, reviews, users, wishlist } from "@/db/schema";
 import { getCurrentUser } from "@/lib/auth";
 import { invalidate } from "@/lib/redis";
+import { afterStockChange as syncStock, cancelOrderTx, markGatewayOrderPaid } from "@/lib/order-service";
+import { createGatewayOrder, razorpayConfig, verifyPaymentSignature, type CheckoutPayload } from "@/lib/payments";
+import { siteName } from "@/lib/format";
 import { syncProductToSearch } from "@/lib/indexing";
 
 export async function toggleWishlistAction(productId: number): Promise<{ error?: "auth"; wishlisted?: boolean }> {
@@ -88,7 +91,7 @@ const orderSchema = z.object({
   paymentMethod: z.enum(["cod", "upi", "card"]),
 });
 
-export type CheckoutState = { error?: string } | undefined;
+export type CheckoutState = { error?: string; payment?: CheckoutPayload } | undefined;
 
 export async function placeOrderAction(_: CheckoutState, formData: FormData): Promise<CheckoutState> {
   const user = await getCurrentUser();
@@ -130,15 +133,17 @@ export async function placeOrderAction(_: CheckoutState, formData: FormData): Pr
       }
       const shippingFee = subtotal >= 500 ? 0 : 40;
       const pm = parsed.data.paymentMethod;
+      const viaGateway = pm !== "cod" && !!razorpayConfig();
 
       const [order] = await tx
         .insert(orders)
         .values({
           userId: user.id,
-          status: "confirmed",
+          // Gateway orders stay "pending" (stock reserved) until the payment is verified.
+          status: viaGateway ? "pending" : "confirmed",
           paymentMethod: pm,
-          // Online payments are simulated as captured; plug a real gateway in here.
-          paymentStatus: pm === "cod" ? "pending" : "paid",
+          // Without Razorpay keys, online payments are simulated as captured.
+          paymentStatus: pm === "cod" || viaGateway ? "pending" : "paid",
           subtotal: mrpTotal,
           discount: mrpTotal - subtotal,
           shippingFee,
@@ -172,39 +177,94 @@ export async function placeOrderAction(_: CheckoutState, formData: FormData): Pr
   }
 
   await afterStockChange(ids);
+
+  if (parsed.data.paymentMethod !== "cod" && razorpayConfig()) {
+    try {
+      return { payment: await gatewayPayload(orderId, user.id, address.data.phone) };
+    } catch (e) {
+      // Gateway unreachable: release the reservation so stock isn't stuck.
+      await afterStockChange(await db.transaction((tx) => cancelOrderTx(tx, orderId)));
+      return { error: (e as Error).message || "Payment gateway unavailable. Please try again or choose Cash on Delivery." };
+    }
+  }
   redirect(`/orders/${orderId}?placed=1`);
+}
+
+/** Creates (or reuses) the Razorpay order for a pending local order and returns what Checkout needs. */
+async function gatewayPayload(orderId: number, userId: number, phone?: string): Promise<CheckoutPayload> {
+  const cfg = razorpayConfig()!;
+  const [row] = await db
+    .select({ o: orders, name: users.name, email: users.email })
+    .from(orders)
+    .innerJoin(users, eq(orders.userId, users.id))
+    .where(and(eq(orders.id, orderId), eq(orders.userId, userId)));
+  if (!row || row.o.status !== "pending") throw new Error("This order is not awaiting payment");
+  let gatewayOrderId = row.o.gatewayOrderId;
+  if (!gatewayOrderId) {
+    const g = await createGatewayOrder(row.o.total, `order_${orderId}`, { orderId: String(orderId) });
+    gatewayOrderId = g.id;
+    await db.update(orders).set({ gatewayOrderId }).where(eq(orders.id, orderId));
+  }
+  return {
+    orderId,
+    keyId: cfg.keyId,
+    gatewayOrderId,
+    amount: row.o.total * 100,
+    currency: "INR",
+    name: siteName(),
+    prefill: { name: row.name, email: row.email, contact: phone ?? row.o.shippingAddress.phone },
+  };
+}
+
+export async function retryPaymentAction(orderId: number): Promise<CheckoutState> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  if (!razorpayConfig()) return { error: "Online payments are not configured" };
+  try {
+    return { payment: await gatewayPayload(orderId, user.id) };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+}
+
+const verifySchema = z.object({
+  razorpay_order_id: z.string().min(1).max(64),
+  razorpay_payment_id: z.string().min(1).max(64),
+  razorpay_signature: z.string().min(1).max(256),
+});
+
+/** Called by the client after Razorpay Checkout succeeds; the signature proves the payment is genuine. */
+export async function verifyPaymentAction(orderId: number, response: unknown): Promise<{ ok?: boolean; error?: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Please log in again" };
+  const cfg = razorpayConfig();
+  const parsed = verifySchema.safeParse(response);
+  if (!cfg || !parsed.success) return { error: "Invalid payment response" };
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = parsed.data;
+
+  const [order] = await db
+    .select({ gatewayOrderId: orders.gatewayOrderId })
+    .from(orders)
+    .where(and(eq(orders.id, orderId), eq(orders.userId, user.id)));
+  if (!order || order.gatewayOrderId !== razorpay_order_id) return { error: "Order mismatch" };
+  if (!verifyPaymentSignature(razorpay_order_id, razorpay_payment_id, razorpay_signature, cfg.keySecret)) {
+    return { error: "Payment verification failed" };
+  }
+  const paid = await markGatewayOrderPaid(razorpay_order_id, razorpay_payment_id);
+  if (!paid) return { error: "This order has expired. If you were charged, the amount will be refunded." };
+  revalidatePath(`/orders/${orderId}`);
+  return { ok: true };
 }
 
 export async function cancelOrderAction(orderId: number) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  const ids = await db.transaction(async (tx) => {
-    const [order] = await tx
-      .select()
-      .from(orders)
-      .where(and(eq(orders.id, orderId), eq(orders.userId, user.id)))
-      .for("update");
-    if (!order || !["pending", "confirmed"].includes(order.status)) return [];
-    const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, orderId));
-    for (const it of items) {
-      if (it.productId)
-        await tx.update(products).set({ stock: sql`${products.stock} + ${it.quantity}` }).where(eq(products.id, it.productId));
-    }
-    await tx
-      .update(orders)
-      .set({ status: "cancelled", paymentStatus: order.paymentStatus === "paid" ? "refunded" : order.paymentStatus, updatedAt: new Date() })
-      .where(eq(orders.id, orderId));
-    return items.map((i) => i.productId).filter((x): x is number => !!x);
-  });
+  const ids = await db.transaction((tx) => cancelOrderTx(tx, orderId, { userId: user.id }));
   await afterStockChange(ids);
   revalidatePath(`/orders/${orderId}`);
   revalidatePath("/orders");
 }
 
 async function afterStockChange(ids: number[]) {
-  if (!ids.length) return;
-  await invalidate("product:", "catalog:", "search:");
-  await Promise.all(ids.map((id) => syncProductToSearch(id)));
-  const slugs = await db.select({ slug: products.slug }).from(products).where(inArray(products.id, ids));
-  for (const { slug } of slugs) revalidatePath(`/p/${slug}`);
+  for (const slug of await syncStock(ids)) revalidatePath(`/p/${slug}`);
 }

@@ -3,7 +3,7 @@ import type { OrderStatus } from "@/db/schema";
 export const ORDER_STEPS: OrderStatus[] = ["confirmed", "shipped", "out_for_delivery", "delivered"];
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {
-  pending: "Pending",
+  pending: "Awaiting Payment",
   confirmed: "Order Confirmed",
   shipped: "Shipped",
   out_for_delivery: "Out for Delivery",

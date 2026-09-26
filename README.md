@@ -9,13 +9,14 @@ A full‑stack, SEO‑friendly e‑commerce store built with **Next.js 15 (App R
 - Category pages (`/c/[slug]`) and search (`/search`) with **faceted filters** — category, brand, price range, rating, in‑stock — and sorting (relevance, popularity, price, newest, discount) plus pagination. Filters are plain links/GET forms, so they work without JavaScript.
 - **Search‑as‑you‑type autocomplete** (Elasticsearch completion + edge‑ngram, debounced, keyboard accessible).
 - Product page: image gallery, price/MRP/discount, offers, highlights, specifications, ratings & reviews (write a review when logged in), similar products, wishlist.
-- Cart (persisted in `localStorage`, synced across tabs), checkout with address + payment method (UPI / Card / COD — online payments are simulated), order confirmation, **order tracking timeline**, cancel order, order history.
-- Customer auth (register / login / logout), account page, wishlist.
+- Cart (persisted in `localStorage`, synced across tabs) that **re-validates prices and stock** against the server on the cart and checkout pages and tells the shopper what changed.
+- Checkout with address (prefilled from the last order) + payment method: **Razorpay** (UPI / cards) or Cash on Delivery, order confirmation, **order tracking timeline**, cancel order, order history.
+- Customer auth (register / login / logout), profile editing, password change, wishlist, **recently viewed** products.
 
 ### Admin dashboard (`/admin`)
 - Separate login at `/admin/login` with its own cookie/JWT audience — customer sessions can't access it, and middleware guards every `/admin` route.
 - Dashboard: revenue, orders, products, customers, 14‑day sales chart, orders by status, recent orders, low‑stock alerts, service health (Postgres/Redis/Elasticsearch).
-- Products: list/search/filter, **add / edit / delete**, show/hide, featured flag, images, highlights, specs, SEO slug.
+- Products: list/search/filter, **add / edit / delete**, show/hide, featured flag, **image upload** (or URLs), highlights, specs, SEO slug.
 - Categories, homepage banners, orders (update status → customer sees tracking update), customers list.
 - *Search & Cache* page: rebuild Elasticsearch index, flush Redis cache.
 
@@ -27,6 +28,19 @@ A full‑stack, SEO‑friendly e‑commerce store built with **Next.js 15 (App R
 - Metadata API: title templates, descriptions, canonical URLs, Open Graph / Twitter cards, `noindex` on search/filter/account pages.
 - **JSON‑LD**: `Product` (offers, availability, aggregate rating), `BreadcrumbList`, `Organization`, `WebSite` + `SearchAction` (sitelinks search box).
 - Dynamic `sitemap.xml`, `robots.txt`, web app manifest, semantic HTML and accessible controls.
+
+### Payments (Razorpay)
+- Set `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` to enable real payments; without them UPI/Card orders run in **simulated mode**.
+- Flow: the order is created as *Awaiting Payment* with stock reserved → a Razorpay order is created server-side → Razorpay Checkout opens → the returned signature is **verified server-side (HMAC-SHA256)** before the order is confirmed.
+- Webhook `POST /api/webhooks/razorpay` (events `payment.captured`, `order.paid`, `payment.failed`; secret `RAZORPAY_WEBHOOK_SECRET`) confirms orders even if the browser closes mid-payment. Idempotent.
+- Customers can retry payment from the order page. Schedule `POST /api/cron/expire-orders` (header `Authorization: Bearer $CRON_SECRET`) every few minutes to cancel orders unpaid after 30 minutes and release their stock.
+
+### Image uploads
+- Admins upload JPEG/PNG/WebP/AVIF/GIF (≤ 5 MB) from the product, category and banner forms. Files are type-checked by magic bytes (the browser's MIME type is not trusted), stored under random names in `UPLOAD_DIR`, and served from `/uploads/…` with immutable caching. In Docker they live on the `uploads` volume.
+
+### Security
+- JWT secret is required (≥ 32 chars) and the published example value is refused in production; middleware fails closed.
+- httpOnly `SameSite=Lax` session cookies, separate admin/customer JWT audiences, bcrypt password hashing, Redis rate limiting on login/sign-up/password change, zod validation on every server action, row locking to prevent overselling, security headers (HSTS in production, `nosniff`, frame and referrer policies).
 
 ### Redis
 - Cache‑aside helper (`src/lib/redis.ts`) for catalog queries, product details, reviews, search results and autocomplete, with prefix‑based invalidation via `SCAN` + `UNLINK`.
@@ -46,6 +60,7 @@ Next.js 15 · React 19 · TypeScript · Tailwind CSS v4 · Drizzle ORM · Postgr
 
 ### Option A — Docker (everything included)
 ```bash
+export JWT_SECRET=$(openssl rand -base64 48)    # required
 docker compose --profile setup run --rm setup   # migrate, seed demo data, build search index
 docker compose up -d app                         # http://localhost:3000
 ```
@@ -75,6 +90,8 @@ Change `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `.env` before seeding, and always set
 | `npm run dev` | Dev server (Turbopack) |
 | `npm run build` / `npm start` | Production build / server |
 | `npm run typecheck` | TypeScript check |
+| `npm run lint` | ESLint |
+| `npm test` | Unit tests (Vitest) |
 | `npm run db:generate` | Generate a migration after editing `src/db/schema.ts` |
 | `npm run db:migrate` | Apply migrations |
 | `npm run db:seed` | Reset & seed demo data (destructive) |
@@ -103,7 +120,10 @@ scripts/               migrate, seed, reindex
 - `GET /api/products?q=&category=&brand=&min=&max=&rating=&sort=&page=` — search JSON
 - `GET /api/search/suggest?q=` — autocomplete suggestions
 - `GET /api/health` — Postgres / Redis / Elasticsearch status
+- `GET /api/cart?ids=1,2` — live price/stock for cart items
+- `POST /api/webhooks/razorpay` — Razorpay webhook
+- `POST /api/cron/expire-orders` — cancel stale unpaid orders (Bearer `CRON_SECRET`)
 
 ## Notes
-- Product images use URLs (seed data uses picsum.photos). Allowed remote image hosts are configured in `next.config.ts` — add your CDN there.
-- Payments are simulated; plug a real gateway into `placeOrderAction` in `src/app/actions/shop.ts`.
+- Seed data uses picsum.photos image URLs. Allowed remote image hosts are configured in `next.config.ts` — add your CDN there.
+- For multi-instance deployments, point `UPLOAD_DIR` at shared storage (or swap `src/lib/uploads.ts` for S3/Cloudinary).

@@ -62,7 +62,9 @@ export default async function AdminOrder({ params }: { params: Promise<{ id: str
                 <button className="btn-primary">Update</button>
               </form>
             )}
-            <p className="mt-3 uppercase">Payment: {o.paymentMethod} · <Badge tone={o.paymentStatus === "paid" ? "green" : "gray"}>{o.paymentStatus}</Badge></p>
+            <p className="mt-3 uppercase">Payment: {o.paymentMethod} · <Badge tone={o.paymentStatus === "paid" ? "green" : o.paymentStatus === "failed" ? "red" : "gray"}>{o.paymentStatus}</Badge></p>
+            {o.gatewayOrderId && <p className="mt-2 break-all text-xs text-slate-500">Razorpay order: {o.gatewayOrderId}</p>}
+            {o.gatewayPaymentId && <p className="break-all text-xs text-slate-500">Payment ID: {o.gatewayPaymentId}</p>}
           </Panel>
           <Panel className="p-5 text-sm">
             <h2 className="mb-2 font-semibold">Customer</h2>

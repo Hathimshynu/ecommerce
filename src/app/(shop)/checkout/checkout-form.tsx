@@ -4,12 +4,23 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { placeOrderAction } from "@/app/actions/shop";
 import { useCart } from "@/components/shop/cart-provider";
+import type { ShippingAddress } from "@/db/schema";
 import { PriceDetails } from "@/components/shop/price-details";
+import { AutoPay } from "@/components/shop/pay-button";
+import { CartSync } from "@/components/shop/cart-sync";
 
 const STATES = ["Andhra Pradesh", "Delhi", "Gujarat", "Karnataka", "Kerala", "Maharashtra", "Punjab", "Rajasthan", "Tamil Nadu", "Telangana", "Uttar Pradesh", "West Bengal", "Other"];
 
-export function CheckoutForm({ userName, email }: { userName: string; email: string }) {
-  const { items, ready, subtotal, mrpTotal, count } = useCart();
+export function CheckoutForm({
+  userName,
+  email,
+  defaults,
+}: {
+  userName: string;
+  email: string;
+  defaults?: Partial<ShippingAddress>;
+}) {
+  const { items, ready, subtotal, mrpTotal, count, hasUnavailable } = useCart();
   const [state, action, pending] = useActionState(placeOrderAction, undefined);
 
   if (!ready) return <div className="mx-auto max-w-7xl p-3"><div className="card h-64 animate-pulse" /></div>;
@@ -25,8 +36,10 @@ export function CheckoutForm({ userName, email }: { userName: string; email: str
 
   return (
     <form action={action} className="mx-auto grid max-w-7xl gap-3 p-2 sm:p-3 lg:grid-cols-[1fr_380px]">
+      <AutoPay payload={state?.payment} />
       <input type="hidden" name="cart" value={JSON.stringify(items.map((i) => ({ id: i.id, qty: i.qty })))} />
       <div className="space-y-3">
+        <CartSync />
         <section className="card flex items-center gap-4 px-6 py-4">
           <span className="rounded-sm bg-gray-100 px-2 text-sm text-brand">1</span>
           <div>
@@ -40,15 +53,15 @@ export function CheckoutForm({ userName, email }: { userName: string; email: str
             <span className="rounded-sm bg-white px-2 text-brand">2</span> Delivery address
           </h2>
           <div className="grid gap-4 p-6 sm:grid-cols-2">
-            <Field name="fullName" label="Full name" defaultValue={userName} autoComplete="name" />
-            <Field name="phone" label="10-digit mobile number" type="tel" autoComplete="tel" />
-            <Field name="pincode" label="Pincode" inputMode="numeric" autoComplete="postal-code" />
-            <Field name="city" label="City / District / Town" autoComplete="address-level2" />
-            <div className="sm:col-span-2"><Field name="line1" label="Address (Area and Street)" autoComplete="address-line1" /></div>
-            <Field name="line2" label="Landmark (optional)" required={false} autoComplete="address-line2" />
+            <Field name="fullName" label="Full name" defaultValue={defaults?.fullName ?? userName} autoComplete="name" />
+            <Field name="phone" label="10-digit mobile number" type="tel" autoComplete="tel" defaultValue={defaults?.phone} />
+            <Field name="pincode" label="Pincode" inputMode="numeric" autoComplete="postal-code" defaultValue={defaults?.pincode} />
+            <Field name="city" label="City / District / Town" autoComplete="address-level2" defaultValue={defaults?.city} />
+            <div className="sm:col-span-2"><Field name="line1" label="Address (Area and Street)" autoComplete="address-line1" defaultValue={defaults?.line1} /></div>
+            <Field name="line2" label="Landmark (optional)" required={false} autoComplete="address-line2" defaultValue={defaults?.line2} />
             <div>
               <label className="label" htmlFor="state">State</label>
-              <select id="state" name="state" required className="input" defaultValue="">
+              <select id="state" name="state" required className="input" defaultValue={defaults?.state && STATES.includes(defaults.state) ? defaults.state : ""}>
                 <option value="" disabled>Select state</option>
                 {STATES.map((s) => <option key={s}>{s}</option>)}
               </select>
@@ -77,7 +90,7 @@ export function CheckoutForm({ userName, email }: { userName: string; email: str
           </div>
           {state?.error && <p role="alert" className="mx-6 mb-4 rounded-sm bg-red-50 p-3 text-sm text-red-700">{state.error}</p>}
           <div className="flex justify-end border-t p-4">
-            <button disabled={pending} className="btn-buy px-12 py-3.5">{pending ? "Placing order…" : "Confirm order"}</button>
+            <button disabled={pending || hasUnavailable} className="btn-buy px-12 py-3.5">{pending ? "Placing order…" : "Confirm order"}</button>
           </div>
         </section>
       </div>

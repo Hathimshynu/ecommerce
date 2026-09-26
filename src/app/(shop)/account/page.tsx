@@ -6,6 +6,7 @@ import { orders, users, wishlist } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { logoutAction } from "@/app/actions/auth";
 import { formatDate } from "@/lib/format";
+import { PasswordForm, ProfileForm } from "./account-forms";
 
 export const metadata: Metadata = { title: "My Account", robots: { index: false } };
 
@@ -29,9 +30,10 @@ export default async function AccountPage() {
       </section>
       <section className="card grid gap-4 p-5 sm:grid-cols-2">
         <div><p className="label">Email</p><p>{user.email}</p></div>
-        <div><p className="label">Mobile</p><p>{user.phone ?? "—"}</p></div>
         <div><p className="label">Member since</p><p>{formatDate(user.createdAt)}</p></div>
       </section>
+      <ProfileForm name={user.name} phone={user.phone} />
+      <PasswordForm />
       <section className="grid gap-3 sm:grid-cols-2">
         <Link href="/orders" className="card p-5 hover:shadow-md"><p className="font-semibold">My Orders</p><p className="text-sm text-gray-500">{orderCount} orders</p></Link>
         <Link href="/wishlist" className="card p-5 hover:shadow-md"><p className="font-semibold">My Wishlist</p><p className="text-sm text-gray-500">{wishCount} items</p></Link>

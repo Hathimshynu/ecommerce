@@ -3,10 +3,11 @@
 import { eq } from "drizzle-orm";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { clearSessionCookie, hashPassword, setSessionCookie, verifyPassword } from "@/lib/auth";
+import { clearSessionCookie, getCurrentUser, hashPassword, setSessionCookie, verifyPassword } from "@/lib/auth";
 import { rateLimit } from "@/lib/redis";
 
 export type FormState = { error?: string; ok?: boolean; message?: string } | undefined;
@@ -111,4 +112,48 @@ export async function adminLoginAction(_: FormState, formData: FormData): Promis
 export async function adminLogoutAction() {
   await clearSessionCookie("admin");
   redirect("/admin/login");
+}
+
+const profileSchema = z.object({
+  name: registerSchema.shape.name,
+  phone: registerSchema.shape.phone,
+});
+
+export async function updateProfileAction(_: FormState, formData: FormData): Promise<FormState> {
+  const session = await getCurrentUser();
+  if (!session) redirect("/login?next=/account");
+  const parsed = profileSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const { name, phone } = parsed.data;
+  await db.update(users).set({ name, phone: phone || null }).where(eq(users.id, session.id));
+  // Re-issue the session so the new name shows everywhere immediately.
+  await setSessionCookie({ ...session, name }, "shop");
+  await setDisplayCookie(name);
+  revalidatePath("/account");
+  return { ok: true, message: "Profile updated" };
+}
+
+const passwordSchema = z
+  .object({
+    current: z.string().min(1, "Enter your current password"),
+    password: registerSchema.shape.password,
+    confirm: z.string(),
+  })
+  .refine((d) => d.password === d.confirm, { message: "New passwords do not match", path: ["confirm"] });
+
+export async function changePasswordAction(_: FormState, formData: FormData): Promise<FormState> {
+  const session = await getCurrentUser();
+  if (!session) redirect("/login?next=/account");
+  const parsed = passwordSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const rl = await rateLimit(`pwchange:${session.id}`, 5, 15 * 60);
+  if (!rl.ok) return { error: "Too many attempts. Try again later." };
+
+  const [user] = await db.select().from(users).where(eq(users.id, session.id));
+  if (!user || !(await verifyPassword(parsed.data.current, user.passwordHash))) {
+    return { error: "Current password is incorrect" };
+  }
+  await db.update(users).set({ passwordHash: await hashPassword(parsed.data.password) }).where(eq(users.id, user.id));
+  return { ok: true, message: "Password changed" };
 }

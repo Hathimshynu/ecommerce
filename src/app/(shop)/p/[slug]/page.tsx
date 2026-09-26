@@ -8,6 +8,7 @@ import { ProductActions, WishlistButton } from "@/components/shop/product-action
 import { ProductRail, ProductRailSkeleton } from "@/components/shop/product-card";
 import { RatingBadge } from "@/components/shop/rating";
 import { ReviewForm } from "@/components/shop/review-form";
+import { RecentlyViewed, TrackView } from "@/components/shop/recently-viewed";
 import { getAllProductSlugs, getProductBySlug, getProductReviews, getRelatedProducts } from "@/lib/catalog";
 import { discountPercent, formatDate, formatPrice, siteName, siteUrl } from "@/lib/format";
 
@@ -106,6 +107,20 @@ export default async function ProductPage({ params }: Props) {
 
   return (
     <div className="mx-auto max-w-7xl space-y-3 px-2 py-3 sm:px-3">
+      <TrackView
+        product={{
+          id: p.id,
+          name: p.name,
+          slug: p.slug,
+          brand: p.brand,
+          price: p.price,
+          mrp: p.mrp,
+          rating: p.rating,
+          ratingCount: p.ratingCount,
+          stock: p.stock,
+          image: p.images[0] ?? null,
+        }}
+      />
       <JsonLd
         data={[
           {
@@ -229,6 +244,7 @@ export default async function ProductPage({ params }: Props) {
       <Suspense fallback={<ProductRailSkeleton />}>
         <Related id={p.id} categoryId={p.categoryId} />
       </Suspense>
+      <RecentlyViewed excludeId={p.id} />
     </div>
   );
 }

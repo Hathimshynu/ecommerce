@@ -25,7 +25,7 @@ export const orderStatusEnum = pgEnum("order_status", [
   "cancelled",
 ]);
 export const paymentMethodEnum = pgEnum("payment_method", ["cod", "upi", "card"]);
-export const paymentStatusEnum = pgEnum("payment_status", ["pending", "paid", "refunded"]);
+export const paymentStatusEnum = pgEnum("payment_status", ["pending", "paid", "failed", "refunded"]);
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -126,10 +126,17 @@ export const orders = pgTable(
     shippingFee: integer("shipping_fee").notNull().default(0),
     total: integer("total").notNull(),
     shippingAddress: jsonb("shipping_address").$type<ShippingAddress>().notNull(),
+    /** Payment-gateway order id (e.g. Razorpay order_xxx) and captured payment id. */
+    gatewayOrderId: varchar("gateway_order_id", { length: 64 }),
+    gatewayPaymentId: varchar("gateway_payment_id", { length: 64 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("orders_user_idx").on(t.userId), index("orders_status_idx").on(t.status)],
+  (t) => [
+    index("orders_user_idx").on(t.userId),
+    index("orders_status_idx").on(t.status),
+    uniqueIndex("orders_gateway_order_uq").on(t.gatewayOrderId),
+  ],
 );
 
 export const orderItems = pgTable(

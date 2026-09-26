@@ -4,10 +4,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { MAX_QTY, useCart } from "@/components/shop/cart-provider";
 import { PriceDetails } from "@/components/shop/price-details";
+import { CartSync } from "@/components/shop/cart-sync";
 import { discountPercent, formatPrice } from "@/lib/format";
 
 export function CartView() {
-  const { items, ready, setQty, remove, subtotal, mrpTotal, count } = useCart();
+  const { items, ready, setQty, remove, subtotal, mrpTotal, count, hasUnavailable } = useCart();
 
   if (!ready) return <div className="mx-auto max-w-7xl p-3"><div className="card h-64 animate-pulse" /></div>;
 
@@ -26,6 +27,7 @@ export function CartView() {
     <div className="mx-auto grid max-w-7xl gap-3 p-2 sm:p-3 lg:grid-cols-[1fr_380px]">
       <section className="card">
         <h1 className="border-b px-6 py-4 text-lg font-semibold">My Cart ({count})</h1>
+        <div className="px-4 pt-3 empty:hidden"><CartSync /></div>
         <ul className="divide-y">
           {items.map((i) => {
             const off = discountPercent(i.price, i.mrp);
@@ -48,6 +50,7 @@ export function CartView() {
                     <span className="text-lg font-semibold">{formatPrice(i.price * i.qty)}</span>
                     {off > 0 && <span className="text-sm font-semibold text-success">{off}% Off</span>}
                   </div>
+                  {i.stock <= 0 && <p className="text-sm font-semibold text-red-600">Out of stock</p>}
                   <button onClick={() => remove(i.id)} className="text-sm font-semibold uppercase hover:text-brand">Remove</button>
                 </div>
               </li>
@@ -55,7 +58,11 @@ export function CartView() {
           })}
         </ul>
         <div className="sticky bottom-0 flex justify-end border-t bg-white p-4 shadow-[0_-2px_10px_rgba(0,0,0,0.1)]">
-          <Link href="/checkout" className="btn-buy px-12 py-3.5">Place order</Link>
+          {hasUnavailable ? (
+            <p className="text-sm font-medium text-red-600">Remove out-of-stock items to continue</p>
+          ) : (
+            <Link href="/checkout" className="btn-buy px-12 py-3.5">Place order</Link>
+          )}
         </div>
       </section>
       <PriceDetails count={count} subtotal={subtotal} mrpTotal={mrpTotal} />

@@ -1,12 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
+import { jwtSecretKey } from "@/lib/secret";
 
-const secret = () => new TextEncoder().encode(process.env.JWT_SECRET ?? "");
 
 async function valid(token: string | undefined, audience: string, role?: string) {
   if (!token) return false;
   try {
-    const { payload } = await jwtVerify(token, secret(), { audience });
+    // A missing/weak secret throws here, so every protected route fails closed.
+    const { payload } = await jwtVerify(token, jwtSecretKey(), { audience });
     return role ? payload.role === role : true;
   } catch {
     return false;

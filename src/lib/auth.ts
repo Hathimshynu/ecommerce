@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { cache } from "react";
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
+import { jwtSecretKey } from "./secret";
 
 export type Role = "customer" | "admin";
 export type SessionUser = { id: number; name: string; email: string; role: Role };
@@ -12,11 +13,7 @@ export const CUSTOMER_COOKIE = "sk_session";
 export const ADMIN_COOKIE = "sk_admin";
 const MAX_AGE = 60 * 60 * 24 * 7;
 
-function secret() {
-  const s = process.env.JWT_SECRET;
-  if (!s || s.length < 32) throw new Error("JWT_SECRET must be set to at least 32 characters");
-  return new TextEncoder().encode(s);
-}
+const secret = () => jwtSecretKey();
 
 export async function signSession(user: SessionUser, audience: "shop" | "admin") {
   return new SignJWT({ name: user.name, email: user.email, role: user.role })

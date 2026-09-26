@@ -3,6 +3,7 @@ import { BannerCarousel } from "@/components/shop/banner-carousel";
 import { CategoryBar } from "@/components/shop/category-bar";
 import { ProductRail, ProductRailSkeleton } from "@/components/shop/product-card";
 import { JsonLd } from "@/components/json-ld";
+import { RecentlyViewed } from "@/components/shop/recently-viewed";
 import { getBanners, getCategories, getFeaturedProducts, getProductsByCategory, getTopDeals } from "@/lib/catalog";
 import { siteName, siteUrl } from "@/lib/format";
 
@@ -58,6 +59,7 @@ export default async function HomePage() {
       <CategoryBar />
       <div className="mx-auto max-w-7xl space-y-3 px-2 py-3 sm:px-3">
         <BannerCarousel banners={banners} />
+        <RecentlyViewed />
         <Suspense fallback={<ProductRailSkeleton />}>
           <Deals />
         </Suspense>
