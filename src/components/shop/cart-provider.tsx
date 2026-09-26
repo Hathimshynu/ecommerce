@@ -1,0 +1,92 @@
+"use client";
+
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+
+export type CartItem = {
+  id: number;
+  slug: string;
+  name: string;
+  image: string | null;
+  price: number;
+  mrp: number;
+  stock: number;
+  qty: number;
+};
+
+type CartCtx = {
+  items: CartItem[];
+  count: number;
+  subtotal: number;
+  mrpTotal: number;
+  ready: boolean;
+  add: (item: Omit<CartItem, "qty">, qty?: number) => void;
+  setQty: (id: number, qty: number) => void;
+  remove: (id: number) => void;
+  clear: () => void;
+};
+
+const Ctx = createContext<CartCtx | null>(null);
+const KEY = "sk_cart_v1";
+export const MAX_QTY = 10;
+
+export function CartProvider({ children }: { children: React.ReactNode }) {
+  const [items, setItems] = useState<CartItem[]>([]);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) setItems(JSON.parse(raw));
+    } catch {
+      /* ignore */
+    }
+    setReady(true);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === KEY) setItems(e.newValue ? JSON.parse(e.newValue) : []);
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    try {
+      localStorage.setItem(KEY, JSON.stringify(items));
+    } catch {
+      /* ignore */
+    }
+  }, [items, ready]);
+
+  const add = useCallback<CartCtx["add"]>((item, qty = 1) => {
+    setItems((prev) => {
+      const limit = Math.min(MAX_QTY, item.stock);
+      const existing = prev.find((i) => i.id === item.id);
+      if (existing) return prev.map((i) => (i.id === item.id ? { ...i, ...item, qty: Math.min(limit, i.qty + qty) } : i));
+      return [...prev, { ...item, qty: Math.min(limit, qty) }];
+    });
+  }, []);
+
+  const setQty = useCallback((id: number, qty: number) => {
+    setItems((prev) =>
+      prev.map((i) => (i.id === id ? { ...i, qty: Math.max(1, Math.min(qty, MAX_QTY, i.stock)) } : i)),
+    );
+  }, []);
+
+  const remove = useCallback((id: number) => setItems((prev) => prev.filter((i) => i.id !== id)), []);
+  const clear = useCallback(() => setItems([]), []);
+
+  const value = useMemo<CartCtx>(() => {
+    const count = items.reduce((n, i) => n + i.qty, 0);
+    const subtotal = items.reduce((n, i) => n + i.qty * i.price, 0);
+    const mrpTotal = items.reduce((n, i) => n + i.qty * i.mrp, 0);
+    return { items, count, subtotal, mrpTotal, ready, add, setQty, remove, clear };
+  }, [items, ready, add, setQty, remove, clear]);
+
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+export function useCart() {
+  const ctx = useContext(Ctx);
+  if (!ctx) throw new Error("useCart must be used within CartProvider");
+  return ctx;
+}

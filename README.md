@@ -1,231 +1,109 @@
-x# Ecommerce Application - Laravel + Livewire + MongoDB
+# ShopKart — Next.js E‑commerce (Flipkart‑style)
 
-A modern ecommerce application built with Laravel, Livewire, and MongoDB. This project provides a complete shopping experience with product browsing, cart management, and checkout functionality.
+A full‑stack, SEO‑friendly e‑commerce store built with **Next.js 15 (App Router) + React 19**, **PostgreSQL (Drizzle ORM)**, **Redis** caching and **Elasticsearch** product search, with a separate **admin dashboard** (own login) for managing the catalog and orders.
 
 ## Features
 
-- **Product Catalog**: Browse and search products with filtering and sorting
-- **Dynamic Shopping Cart**: Real-time cart management with Livewire
-- **User Authentication**: Secure user registration and login
-- **Order Management**: Complete checkout and order tracking
-- **MongoDB Integration**: NoSQL database for flexible product schemas
-- **Livewire Integration**: Interactive frontend without writing JavaScript
+### Storefront
+- Home page with banner carousel, category strip, *Top Deals*, *Suggested For You* and per‑category product rails (streamed with `Suspense`).
+- Category pages (`/c/[slug]`) and search (`/search`) with **faceted filters** — category, brand, price range, rating, in‑stock — and sorting (relevance, popularity, price, newest, discount) plus pagination. Filters are plain links/GET forms, so they work without JavaScript.
+- **Search‑as‑you‑type autocomplete** (Elasticsearch completion + edge‑ngram, debounced, keyboard accessible).
+- Product page: image gallery, price/MRP/discount, offers, highlights, specifications, ratings & reviews (write a review when logged in), similar products, wishlist.
+- Cart (persisted in `localStorage`, synced across tabs), checkout with address + payment method (UPI / Card / COD — online payments are simulated), order confirmation, **order tracking timeline**, cancel order, order history.
+- Customer auth (register / login / logout), account page, wishlist.
 
-## Technology Stack
+### Admin dashboard (`/admin`)
+- Separate login at `/admin/login` with its own cookie/JWT audience — customer sessions can't access it, and middleware guards every `/admin` route.
+- Dashboard: revenue, orders, products, customers, 14‑day sales chart, orders by status, recent orders, low‑stock alerts, service health (Postgres/Redis/Elasticsearch).
+- Products: list/search/filter, **add / edit / delete**, show/hide, featured flag, images, highlights, specs, SEO slug.
+- Categories, homepage banners, orders (update status → customer sees tracking update), customers list.
+- *Search & Cache* page: rebuild Elasticsearch index, flush Redis cache.
 
-- **Framework**: Laravel 11
-- **Frontend**: Livewire 3
-- **Database**: MongoDB
-- **Styling**: Tailwind CSS
-- **Language**: PHP 8.1+
+### Performance & SEO
+- React Server Components everywhere; client JS only for interactive bits (cart, gallery, search box).
+- **Static generation + ISR**: home (`revalidate = 60`), product pages pre‑rendered via `generateStaticParams` (`revalidate = 600`, on‑demand for the rest). The header is fully static — the user menu hydrates from a non‑sensitive cookie — so storefront pages stay cacheable.
+- On‑demand revalidation (`revalidatePath`) + Redis key invalidation whenever admins change data or stock changes.
+- `next/image` with AVIF/WebP, responsive `sizes`, priority LCP images; immutable caching headers for static assets; `output: "standalone"` Docker image.
+- Metadata API: title templates, descriptions, canonical URLs, Open Graph / Twitter cards, `noindex` on search/filter/account pages.
+- **JSON‑LD**: `Product` (offers, availability, aggregate rating), `BreadcrumbList`, `Organization`, `WebSite` + `SearchAction` (sitelinks search box).
+- Dynamic `sitemap.xml`, `robots.txt`, web app manifest, semantic HTML and accessible controls.
 
-## Project Structure
+### Redis
+- Cache‑aside helper (`src/lib/redis.ts`) for catalog queries, product details, reviews, search results and autocomplete, with prefix‑based invalidation via `SCAN` + `UNLINK`.
+- Login/sign‑up **rate limiting**.
+- Fails open: if Redis is down the site keeps working straight from Postgres.
 
-```
-ecommerce/
-├── app/
-│   ├── Http/
-│   │   └── Controllers/          # Application controllers
-│   ├── Livewire/
-│   │   ├── Products/             # Product listing components
-│   │   └── Cart/                 # Shopping cart components
-│   └── Models/                   # MongoDB models
-├── config/
-│   ├── app.php                   # Application configuration
-│   ├── database.php              # Database configuration
-│   └── query.php                 # Query settings
-├── resources/
-│   └── views/
-│       ├── layout.blade.php      # Main layout template
-│       ├── home.blade.php        # Homepage
-│       ├── checkout.blade.php    # Checkout page
-│       └── livewire/             # Livewire component templates
-├── routes/
-│   └── web.php                   # Web routes
-├── composer.json                 # PHP dependencies
-└── .env.example                  # Environment variables template
-```
+### Elasticsearch
+- Custom index (`src/lib/elasticsearch.ts`): English analyzer, edge‑ngram autocomplete sub‑fields, `completion` suggester, keyword facets.
+- `function_score` relevance with a popularity boost, fuzzy matching, brand filter in `post_filter` so brand facets stay complete, aggregations for brands/categories/price.
+- Products are synced on every admin create/update/delete, review and stock change; full reindex via `npm run search:reindex` or the admin page.
+- **Automatic fallback to PostgreSQL search** (with a 30s circuit breaker) when Elasticsearch is unavailable.
 
-## Installation
+## Tech stack
+Next.js 15 · React 19 · TypeScript · Tailwind CSS v4 · Drizzle ORM · PostgreSQL 16 · Redis 7 (ioredis) · Elasticsearch 8 · jose (JWT) · bcryptjs · zod
 
-### Prerequisites
+## Getting started
 
-- PHP 8.1 or higher
-- Composer
-- MongoDB 4.0 or higher
-- Node.js & npm (optional, for asset compilation)
-
-### Setup Steps
-
-1. **Clone or navigate to the project directory**:
-   ```bash
-   cd d:\Projects\ecommerce
-   ```
-
-2. **Copy environment configuration**:
-   ```bash
-   cp .env.example .env
-   ```
-
-3. **Generate application key**:
-   ```bash
-   php artisan key:generate
-   ```
-
-4. **Configure MongoDB connection in `.env`**:
-   ```
-   DB_CONNECTION=mongodb
-   DB_HOST=127.0.0.1
-   DB_PORT=27017
-   DB_DATABASE=ecommerce
-   DB_USERNAME=
-   DB_PASSWORD=
-   ```
-
-5. **Install Composer dependencies**:
-   ```bash
-   composer install
-   ```
-
-6. **Create necessary directories**:
-   ```bash
-   mkdir -p storage/framework/sessions
-   mkdir -p storage/framework/views
-   mkdir -p storage/framework/cache
-   mkdir -p storage/logs
-   ```
-
-7. **Set proper permissions** (Linux/Mac):
-   ```bash
-   chmod -R 775 storage bootstrap/cache
-   ```
-
-## Running the Application
-
-### Development Server
-
-Start the Laravel development server:
-
+### Option A — Docker (everything included)
 ```bash
-php artisan serve
+docker compose --profile setup run --rm setup   # migrate, seed demo data, build search index
+docker compose up -d app                         # http://localhost:3000
 ```
 
-The application will be available at `http://localhost:8000`
-
-### Using Livewire
-
-Livewire will automatically handle component updates. No additional configuration is required beyond the standard Laravel setup.
-
-## Database
-
-### MongoDB Collections
-
-The application uses the following MongoDB collections:
-
-- **users**: User accounts and profiles
-- **products**: Product catalog and inventory
-- **orders**: Customer orders
-- **carts**: Shopping carts
-
-### Seeding Sample Data
-
-To seed sample products (create a seeder first):
-
+### Option B — Local
+Requirements: Node 20+, PostgreSQL, Redis, Elasticsearch 8 (optional — search falls back to Postgres).
 ```bash
-php artisan migrate
-php artisan db:seed
+cp .env.example .env        # adjust connection strings / JWT_SECRET
+npm install
+npm run db:migrate          # create tables
+npm run db:seed             # demo catalog, admin + customer, index into Elasticsearch
+npm run dev                 # http://localhost:3000
+```
+Production: `npm run build && npm start`.
+
+### Demo accounts
+| Role | URL | Email | Password |
+|---|---|---|---|
+| Admin | `/admin/login` | `admin@shopkart.dev` | `Admin@12345` |
+| Customer | `/login` | `customer@shopkart.dev` | `Customer@123` |
+
+Change `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `.env` before seeding, and always set a strong `JWT_SECRET` in production.
+
+## Scripts
+| Script | Description |
+|---|---|
+| `npm run dev` | Dev server (Turbopack) |
+| `npm run build` / `npm start` | Production build / server |
+| `npm run typecheck` | TypeScript check |
+| `npm run db:generate` | Generate a migration after editing `src/db/schema.ts` |
+| `npm run db:migrate` | Apply migrations |
+| `npm run db:seed` | Reset & seed demo data (destructive) |
+| `npm run search:reindex` | Rebuild the Elasticsearch index |
+
+## Project structure
+```
+src/
+  app/
+    (shop)/            storefront: home, c/[slug], search, p/[slug], cart, checkout, orders, wishlist, account, login, register
+    admin/(auth)/      admin login
+    admin/(panel)/     admin dashboard, products, categories, orders, users, banners, system
+    admin/actions.ts   admin server actions (CRUD + cache/search sync)
+    actions/           auth & shop server actions (login, register, wishlist, reviews, checkout)
+    api/               search suggest, products JSON API, health, me
+    sitemap.ts robots.ts manifest.ts
+  components/          shop/ and admin/ UI
+  db/                  Drizzle schema + client
+  lib/                 auth, redis, elasticsearch, search (with fallback), catalog queries, indexing
+  middleware.ts        route protection (admin + customer areas)
+drizzle/               SQL migrations
+scripts/               migrate, seed, reindex
 ```
 
-## Key Files
+## API
+- `GET /api/products?q=&category=&brand=&min=&max=&rating=&sort=&page=` — search JSON
+- `GET /api/search/suggest?q=` — autocomplete suggestions
+- `GET /api/health` — Postgres / Redis / Elasticsearch status
 
-### Models
-- `app/Models/Product.php` - Product model for MongoDB
-- `app/Models/User.php` - User model
-- `app/Models/Order.php` - Order model
-- `app/Models/Cart.php` - Shopping cart model
-
-### Livewire Components
-- `app/Livewire/Products/ProductList.php` - Product listing with search and filters
-- `app/Livewire/Products/ProductCard.php` - Individual product card
-- `app/Livewire/Cart/ShoppingCart.php` - Shopping cart management
-
-### Controllers
-- `app/Http/Controllers/HomeController.php` - Homepage controller
-- `app/Http/Controllers/CheckoutController.php` - Checkout handling
-
-### Routes
-- `/` - Homepage with product listing
-- `/checkout` - Checkout page
-- `/order/{id}/thank-you` - Order confirmation page
-
-## Configuration
-
-### Database Configuration
-
-MongoDB connection is configured in `config/database.php`. Update your `.env` file with your MongoDB credentials:
-
-```env
-DB_CONNECTION=mongodb
-DB_HOST=your_mongodb_host
-DB_PORT=27017
-DB_DATABASE=ecommerce
-DB_USERNAME=your_username
-DB_PASSWORD=your_password
-```
-
-## Development
-
-### Adding New Products
-
-Products can be added via:
-1. Direct MongoDB insertion
-2. Database seeder
-3. Admin panel (to be implemented)
-
-### Customizing Livewire Components
-
-To modify component behavior, edit files in `app/Livewire/`. Changes automatically reflect in views without requiring manual compilation.
-
-### Styling
-
-The project uses Tailwind CSS. Modify classes in view files:
-- `resources/views/layout.blade.php` - Main layout styling
-- `resources/views/livewire/` - Component-specific styling
-
-## Troubleshooting
-
-### MongoDB Connection Issues
-- Ensure MongoDB is running and accessible
-- Verify connection credentials in `.env`
-- Check MongoDB permissions and authentication
-
-### Livewire Not Responding
-- Clear Laravel cache: `php artisan cache:clear`
-- Clear config cache: `php artisan config:clear`
-- Ensure Livewire scripts are loaded in layout
-
-### Permission Errors
-- Set proper owner: `chown -R www-data:www-data .` (Linux)
-- Set directory permissions: `chmod -R 775 storage bootstrap/cache`
-
-## Next Steps
-
-1. **Implement authentication** - Add user login/registration
-2. **Payment integration** - Add payment gateway support
-3. **Admin panel** - Create product management interface
-4. **Email notifications** - Send order confirmation emails
-5. **Product images** - Implement image upload and storage
-6. **Advanced filtering** - Add price ranges, ratings, reviews
-7. **Inventory tracking** - Real-time stock updates
-8. **User accounts** - Order history and wishlist
-
-## Support
-
-For issues or questions:
-1. Check Laravel documentation: https://laravel.com/docs
-2. Review Livewire documentation: https://livewire.laravel.com/docs
-3. Consult MongoDB Laravel documentation: https://www.mongodb.com/docs/drivers/php-laravel/
-
-## License
-
-This project is open source and available under the MIT License.
+## Notes
+- Product images use URLs (seed data uses picsum.photos). Allowed remote image hosts are configured in `next.config.ts` — add your CDN there.
+- Payments are simulated; plug a real gateway into `placeOrderAction` in `src/app/actions/shop.ts`.
